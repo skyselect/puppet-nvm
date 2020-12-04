@@ -1,18 +1,18 @@
 # See README.md for usage information
-class nvm (
-  $user,
+define nvm (
+  $user                = $title,
   $home                = undef,
   $nvm_dir             = undef,
   $profile_path        = undef,
-  $version             = $nvm::params::version,
-  $manage_user         = $nvm::params::manage_user,
-  $manage_dependencies = $nvm::params::manage_dependencies,
-  $manage_profile      = $nvm::params::manage_profile,
-  $nvm_repo            = $nvm::params::nvm_repo,
-  $refetch             = $nvm::params::refetch,
-  $install_node        = $nvm::params::install_node,
-  $node_instances      = $nvm::params::node_instances,
-) inherits ::nvm::params {
+  $install_node        = undef,
+  $manage_dependencies = true,
+  $manage_profile      = true,
+  $manage_user         = false,
+  $node_instances      = {},
+  $nvm_repo            = 'https://github.com/nvm-sh/nvm.git',
+  $refetch             = false,
+  $version             = 'v0.37.2',
+) {
 
   if $home == undef and $user == 'root' {
     $final_home = '/root'
@@ -38,18 +38,19 @@ class nvm (
     $final_profile_path = $profile_path
   }
 
-  validate_string($user)
-  validate_string($final_home)
-  validate_string($final_nvm_dir)
-  validate_string($final_profile_path)
-  validate_string($version)
-  validate_bool($manage_user)
-  validate_bool($manage_dependencies)
-  validate_bool($manage_profile)
-  if $install_node {
-    validate_string($install_node)
-  }
-  validate_hash($node_instances)
+  # FIXME needs syntax update
+  #  validate_string($user)
+  #  validate_string($final_home)
+  #  validate_string($final_nvm_dir)
+  #  validate_string($final_profile_path)
+  #  validate_string($version)
+  #  validate_bool($manage_user)
+  #  validate_bool($manage_dependencies)
+  #  validate_bool($manage_profile)
+  #  if $install_node {
+  #    validate_string($install_node)
+  #  }
+  #  validate_hash($node_instances)
 
   Exec {
     path => '/bin:/sbin:/usr/bin:/usr/sbin',
@@ -68,11 +69,11 @@ class nvm (
       ensure     => present,
       home       => $final_home,
       managehome => true,
-      before     => Class['nvm::install']
+      before     => Nvm::Install[$user]
     }
   }
 
-  class { 'nvm::install':
+  nvm::install { $user:
     user         => $user,
     home         => $final_home,
     version      => $version,
@@ -83,18 +84,22 @@ class nvm (
   }
 
   if $manage_profile {
-    file { "ensure ${final_profile_path}":
+
+    #   if !defined(File[$final_profile_path]) {
+    file { $final_profile_path:
       ensure => 'present',
       path   => $final_profile_path,
       owner  => $user,
+    }
+    #   }
+
+    file_line { "add NVM_DIR to $user profile file":
+      path    => $final_profile_path,
+      line    => "export NVM_DIR=${final_nvm_dir}",
+      require => File[$final_profile_path],
     } ->
 
-    file_line { 'add NVM_DIR to profile file':
-      path => $final_profile_path,
-      line => "export NVM_DIR=${final_nvm_dir}",
-    } ->
-
-    file_line { 'add . ~/.nvm/nvm.sh to profile file':
+    file_line { "add . ~/.nvm/nvm.sh to $user profile file":
       path => $final_profile_path,
       line => "[ -s \"\$NVM_DIR/nvm.sh\" ] && . \"\$NVM_DIR/nvm.sh\"  # This loads nvm",
     }
@@ -105,7 +110,7 @@ class nvm (
       "${install_node}" => {
         set_default => true,
       },
-    })
+      })
   }
   else {
     $final_node_instances = $node_instances
@@ -114,6 +119,6 @@ class nvm (
   create_resources(::nvm::node::install, $final_node_instances, {
     user        => $user,
     nvm_dir     => $final_nvm_dir,
-  })
+    })
 
 }
